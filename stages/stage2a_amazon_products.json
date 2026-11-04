@@ -1,0 +1,119 @@
+{
+  "name": "Stage 2A - Amazon Products",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://34.196.186.128:8000/api/products/amazon",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Input Parser1').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "focus",
+              "value": "={{ $('Input Parser1').item.json.focus || '' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "79247155-0e3b-41de-a29e-11902696680b",
+      "name": "Fetch Amazon Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f4d44504-f852-412e-a01b-2cf08706ccaf",
+              "leftValue": "={{ $json.total_products }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c84dedca-29b8-4493-ab5e-f603121a47f1",
+      "name": "Has Products?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Reshape FastAPI response to legacy { amazonProducts } shape\n// expected by Merge All Data1 and the downstream AI stages (Stages 3–7).\nconst r = $input.first().json;\nconst products = r.products || [];\n\nreturn [{\n  json: {\n    amazonProducts: products.map(p => ({\n      url: p.url,\n      name: p.name,\n      price: p.price,\n      details: p.details || [],\n      pattern: p.pattern || '',\n      image_url: p.image_url || '',\n      rating: p.rating || '',\n      review_count: p.review_count || '',\n      scraped_at: r.scraped_at || new Date().toISOString()\n    })),\n    totalProducts: products.length,\n    scrapedAt: r.scraped_at || new Date().toISOString()\n  }\n}];"
+      },
+      "id": "0ac25b19-e952-4fb0-a23e-b60aa02f23ab",
+      "name": "Reshape Amazon Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Fetch Amazon Products": {
+      "main": [
+        [
+          {
+            "node": "Has Products?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Products?": {
+      "main": [
+        [
+          {
+            "node": "Reshape Amazon Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

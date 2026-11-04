@@ -1,0 +1,21 @@
+{
+  "facts": {
+    "category": "Area Rug",
+    "social": { "posts": 13, "top_hashtags": [{ "tag": "#handtufted", "count": 4 }, { "tag": "#geometricrug", "count": 3 }] },
+    "segments": [{ "n": 1, "name": "Modern Minimalist Low-Pile Polyester" }, { "n": 2, "name": "Bohemian Textured Natural Fiber" }, { "n": 3, "name": "Vintage Distressed Blend" }]
+  },
+  "cases": [
+    { "id": "ok-hypothesis", "why": "A hedged hypothesis with a shopper situation should be kept", "reply": { "themes": [], "segments": [{ "n": 1, "audience_hypothesis": "Shoppers furnishing a bedroom may respond to calm navy room scenes", "key_message": "A quiet rug that anchors the room", "tone": "Calm", "content_ideas": ["Before and after room photo"], "test_to_run": "Post two versions of one room scene and compare saves" }], "content_tests": [] }, "expect": { "status": "ok", "kept": ["may respond to calm navy room scenes"] } },
+    { "id": "ok-known-number", "why": "A number that exists in the facts (13 posts) is allowed", "reply": { "themes": [], "segments": [], "content_tests": [{ "test": "Compare a close-up with a room scene across the 13 sampled posts", "measure": "saves" }] }, "expect": { "status": "ok", "kept": ["13 sampled posts"] } },
+    { "id": "drop-invented-number", "why": "A statistic that is not in the facts must be dropped", "reply": { "themes": [], "segments": [], "content_tests": [{ "test": "Sales rose 40% after the last texture campaign", "measure": "saves" }, { "test": "Compare two caption styles", "measure": "comments" }] }, "expect": { "status": "partial", "dropped": ["40%"], "kept": ["Compare two caption styles"] } },
+    { "id": "drop-customers-love", "why": "A claim about what customers love is a preference claim", "reply": { "themes": [{ "name": "Texture", "idea": "Customers love textured rugs in every room", "segments": [1] }], "segments": [], "content_tests": [] }, "expect": { "status": "no_usable_ideas", "dropped": ["Customers love"] } },
+    { "id": "drop-may-prefer", "why": "A hedged preference claim (found in a real run) must also be dropped", "reply": { "themes": [], "segments": [{ "n": 1, "audience_hypothesis": "Modern living room shoppers may prefer low-pile rugs", "key_message": "Calm spaces", "tone": "Calm", "content_ideas": ["Room photo"], "test_to_run": "Compare two photos" }], "content_tests": [] }, "expect": { "dropped": ["may prefer"], "kept": ["Calm spaces"] } },
+    { "id": "drop-demand", "why": "Demand claims are not supported by the data", "reply": { "themes": [{ "name": "Boho", "idea": "Demand is rising for bohemian styles", "segments": [2] }], "segments": [], "content_tests": [] }, "expect": { "status": "no_usable_ideas", "dropped": ["Demand is rising"] } },
+    { "id": "drop-best-selling", "why": "Performance words are dropped", "reply": { "themes": [{ "name": "Vintage", "idea": "The best-selling vintage look of the year", "segments": [3] }], "segments": [], "content_tests": [] }, "expect": { "status": "no_usable_ideas", "dropped": ["best-selling"] } },
+    { "id": "markup-stripped", "why": "HTML in a model string must never reach the page", "reply": { "themes": [], "segments": [], "content_tests": [{ "test": "Compare <b>bold</b> captions with plain captions", "measure": "<script>x</script>comments" }] }, "expect": { "noMarkup": true } },
+    { "id": "unknown-segment", "why": "A segment number that is not in the facts is removed", "reply": { "themes": [], "segments": [{ "n": 7, "audience_hypothesis": "Shoppers may respond to bright colours", "key_message": "Colour", "tone": "Playful", "content_ideas": ["Colour swatches"], "test_to_run": "Compare two swatches" }], "content_tests": [] }, "expect": { "status": "no_usable_ideas" } },
+    { "id": "fenced-json", "why": "JSON wrapped in a markdown fence is still read", "reply": "```json\n{\"themes\":[],\"segments\":[],\"content_tests\":[{\"test\":\"Compare two caption styles\",\"measure\":\"comments\"}]}\n```", "expect": { "status": "ok", "kept": ["Compare two caption styles"] } },
+    { "id": "wrong-kind-of-model", "why": "A reply from a safety classifier is not JSON and must fail visibly", "reply": "User Safety: safe", "expect": { "status": "ai_output_invalid" } },
+    { "id": "empty-reply", "why": "An empty reply is reported as unavailable", "reply": "", "expect": { "status": "ai_unavailable" } }
+  ]
+}

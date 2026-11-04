@@ -1,0 +1,266 @@
+{
+  "name": "Stage 2B - Social, Blog and Market Data",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://34.196.186.128:8000/api/trends/instagram",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fb2aceea-79cf-460a-a5b9-912260c56760",
+      "name": "Fetch Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -300
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://34.196.186.128:8000/api/trends/pinterest",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "89ceb9f0-6bd9-4572-ada7-29ec2703bdfe",
+      "name": "Fetch Pinterest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://34.196.186.128:8000/api/trends/blogs",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "bb340221-cdeb-4773-a061-e6da28a7962a",
+      "name": "Fetch Blogs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://34.196.186.128:8000/api/trends/blogs",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "blog_type",
+              "value": "market"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "2f9057b8-5b25-4cd2-adad-ef21a970c524",
+      "name": "Fetch Market Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      },
+      "id": "57e49503-8d79-4ad2-a72e-ad157a3e5859",
+      "name": "Merge api data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Merge Social Data1 | Mode: Run Once for All Items\n// Merges Instagram, Pinterest and Blogs into the structure Stages 3-7 read:\n//   socialData.{instagram,pinterest,blogs} (arrays), socialImages, totalSocialItems,\n//   totalSocialImages, externApiStatus.\n// Safeguards added to the course version: each source is read BY NODE NAME; base64 images are removed\n// from the raw items (they live only in socialImages, max 3 per source, MIME and size checked);\n// usernames/authors are dropped; links/emails/@mentions/phone numbers are scrubbed from text; long text is\n// truncated; failed vs empty vs not-run is reported.\n// Third-party text is DATA only. Field names follow the API: { items: [...] }, image_base64, image_mime_type.\nconst MAX_IMAGES_PER_SOURCE = 3;\nconst MAX_BASE64_CHARS = 400000;           // ~300 KB image; larger images are skipped\nconst MAX_ITEMS = 50;\nconst MAX_STRING = 2000;\nconst MAX_ARRAY = 50;\nconst DROP_KEYS = new Set(['image_base64', 'imageBase64', 'image_b64', 'base64', 'username', 'user', 'user_name',\n  'handle', 'author', 'owner', 'profile', 'profile_url', 'email', 'phone']);\nconst LIST_KEYS = ['items', 'posts', 'pins', 'articles', 'blogs', 'results', 'data'];\nconst MIME_OK = /^image\\/(png|jpe?g|webp|gif)$/i;\n\n// Update 2: scrub personal data from free text before it flows to later (AI) stages (best effort):\n// links, emails, @mentions and phone numbers. Structured fields such as `url` are left untouched.\nconst TEXT_KEYS = new Set(['caption', 'text', 'description', 'title', 'headline', 'name', 'content', 'body', 'summary']);\nconst scrubStats = { links: 0, emails: 0, mentions: 0, phones: 0 };\nconst scrub = (s, count = true) => {\n  const tick = (k) => { if (count) scrubStats[k] += 1; };\n  return s\n    .replace(/\\b(?:https?:\\/\\/|www\\.)\\S*[^\\s.,;:!?)\\]\"']/gi, () => { tick('links'); return '[link]'; })   // keeps trailing punctuation\n    .replace(/[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+/g, () => { tick('emails'); return '[email]'; })\n    .replace(/(^|[^\\w])@\\w{2,}(?:\\.\\w+)*/g, (m, pre) => { tick('mentions'); return `${pre}[user]`; })\n    .replace(/(?<![\\w$])\\+?\\d[\\d\\s().-]{7,}\\d(?![\\w%])/g, (m) => {\n      const digits = m.replace(/\\D/g, '').length;\n      if (digits < 9 || digits > 15 || /^\\d{4}-\\d{2}-\\d{2}/.test(m)) return m;   // not a phone number (dates, sizes)\n      tick('phones');\n      return '[phone]';\n    });\n};\n\nconst readSource = (name) => {\n  try { return { ran: true, raw: $(name).all().map((i) => i.json) }; } catch (e) { return { ran: false, raw: [] }; }\n};\nconst listOf = (raw) => {\n  if (raw.length === 1 && raw[0] && typeof raw[0] === 'object') {\n    for (const k of LIST_KEYS) if (Array.isArray(raw[0][k])) return raw[0][k];\n  }\n  return raw;\n};\nconst statusOf = (src, list) => {\n  if (!src.ran) return 'not_run';\n  if (src.raw.length === 1 && src.raw[0] && src.raw[0].error !== undefined) return 'failed';\n  return list.length === 0 ? 'empty' : 'ok';\n};\n// Keep primitives and arrays of primitives; drop denied keys and nested objects; truncate text.\nconst sanitize = (item) => {\n  const out = {};\n  for (const [k, v] of Object.entries(item)) {\n    if (DROP_KEYS.has(k)) continue;\n    if (typeof v === 'string') out[k] = (TEXT_KEYS.has(k) ? scrub(v) : v).slice(0, MAX_STRING);\n    else if (typeof v === 'number' || typeof v === 'boolean' || v === null) out[k] = v;\n    else if (Array.isArray(v) && v.every((x) => ['string', 'number', 'boolean'].includes(typeof x))) {\n      out[k] = v.slice(0, MAX_ARRAY).map((x) => (typeof x === 'string' ? x.slice(0, 200) : x));\n    }\n  }\n  return out;\n};\nconst imagesFrom = (list, source, stats) => {\n  const out = [];\n  for (const item of list) {\n    if (out.length >= MAX_IMAGES_PER_SOURCE) break;\n    let data = item.image_base64;\n    if (!data) continue;\n    let mime = String(item.image_mime_type || 'image/jpeg');\n    if (typeof data !== 'string') { stats.skipped_invalid += 1; continue; }\n    const uri = data.startsWith('data:') ? data.match(/^data:([^;,]+);base64,([\\s\\S]+)$/) : null;\n    if (uri) { mime = uri[1]; data = uri[2]; }\n    if (!MIME_OK.test(mime)) { stats.skipped_invalid += 1; continue; }\n    if (data.length > MAX_BASE64_CHARS) { stats.skipped_oversize += 1; continue; }\n    if (!/^[A-Za-z0-9+/=\\s]+$/.test(data)) { stats.skipped_invalid += 1; continue; }\n    out.push({ source, id: item.id, caption: scrub(String(item.caption || ''), false).slice(0, 500), image_base64: data.replace(/\\s+/g, ''), mime_type: mime.toLowerCase() });\n  }\n  return out;\n};\n\nconst stats = { skipped_oversize: 0, skipped_invalid: 0 };\nconst read = (name, withImages) => {\n  const src = readSource(name);\n  const list = listOf(src.raw).filter((p) => p && typeof p === 'object').slice(0, MAX_ITEMS);\n  const status = statusOf(src, list);\n  const failedOrMissing = status === 'failed' || status === 'not_run';\n  return {\n    status,\n    items: failedOrMissing ? [] : list.map(sanitize),\n    images: withImages && !failedOrMissing ? imagesFrom(list, name === 'Fetch Instagram' ? 'instagram' : 'pinterest', stats) : [],\n    snapshot: (!failedOrMissing && typeof src.raw[0]?.scraped_at === 'string') ? src.raw[0].scraped_at.slice(0, 40) : null,\n  };\n};\n\nconst instagram = read('Fetch Instagram', true);\nconst pinterest = read('Fetch Pinterest', true);\nconst blogs = read('Fetch Blogs', false);\nconst marketSrc = readSource('Fetch Market Data');     // not merged here (Stage 5 reads it); status only\nconst marketStatus = statusOf(marketSrc, listOf(marketSrc.raw));\n\nconst socialImages = [...instagram.images, ...pinterest.images];\nconst label = (s) => (s.items.length > 0 ? 'success' : 'empty_or_failed');   // course-compatible labels\n\nreturn [{\n  json: {\n    socialData: { instagram: instagram.items, pinterest: pinterest.items, blogs: blogs.items },\n    socialImages,\n    totalSocialItems: instagram.items.length + pinterest.items.length + blogs.items.length,\n    totalSocialImages: socialImages.length,\n    externApiStatus: { instagram: label(instagram), pinterest: label(pinterest), blogs: label(blogs) },\n    // Extra detail: why a source has no data (ok | empty | failed | not_run)\n    sourceDetail: { instagram: instagram.status, pinterest: pinterest.status, blogs: blogs.status, market: marketStatus },\n    snapshotDates: { instagram: instagram.snapshot, pinterest: pinterest.snapshot, blogs: blogs.snapshot },\n    imageStats: stats,\n    scrubStats,\n  },\n}];\n"
+      },
+      "id": "92368445-3b21-4a25-a669-2d2567f7ae67",
+      "name": "Merge Social Data1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Merge Image Analysis | Mode: Run Once for All Items\n// Caption/hashtag trend analysis of the Instagram + Pinterest items (text only; the images themselves\n// are analysed in a later stage). Output feeds Stage 3 (Micro-Segment Identifier).\n// Note: tags that only repeat the search (e.g. #arearug, #modernrunner for runners) and generic community tags\n// (#ruglovers, #interiordesign...) are removed from the rankings and reported separately.\nconst MAX_HASHTAGS = 20;\nconst CAPTION_BUDGET = 2000;      // characters, shared equally by the sources that have captions\n\n// Step A: tags that only repeat the search itself (every post was selected for being an \"area rug\")\n// carry no trend information. They are removed from the ranking and reported separately.\nconst QUERY_TAGS = {\n  area_rug: ['#arearug', '#arearugs'],\n  outdoor_rug: ['#outdoorrug', '#outdoorrugs'],\n  hallway_runner: ['#hallwayrunner', '#hallwayrunners', '#runnerrug', '#runnerrugs'],\n  shag_rug: ['#shagrug', '#shagrugs'],\n};\nconst GENERIC_RUG_TAGS = ['#rug', '#rugs'];\n// A tag containing one of these words repeats the search only if nothing meaningful is left once the category word\n// and filler words are removed: #hallwaydesign, #runnerdecor are search tags; #bohorunner (boho), #woolrunner (wool),\n// #kitchenrunner (kitchen) are kept because they say something about style, material or use.\nconst CORE_WORDS = { area_rug: ['arearug'], outdoor_rug: ['outdoor'], hallway_runner: ['runner', 'hallway'], shag_rug: ['shag'] };\n// Generic community tags: popular on every home-decor post, so they carry no trend information\nconst GENERIC_TAGS = new Set(['#ruglovers', '#ruglove', '#rugstyle', '#rugsofinstagram', '#interiordesign', '#interior', '#interiors', '#homedecor', '#home',\n  '#decor', '#livingroom', '#homeinspo', '#homemakeover', '#design', '#style', '#instahome', '#interiorstyling', '#interiorinspiration', '#interiorinspo',\n  '#homeinteriors', '#homestyle', '#homedetails', '#interiordecor', '#welcomehome', '#designer', '#homesweethome', '#instadecor']);\nconst FILLER = ['inspiration', 'inspo', 'styling', 'interiors', 'interior', 'design', 'decor', 'ideas', 'goals', 'style', 'home', 'rugs', 'rug', 'love'];\nlet categoryKey = null;\ntry { categoryKey = $('Get Category Key').first().json.categoryKey; } catch (e) { /* optional */ }\nconst excludedTags = new Set([...(QUERY_TAGS[categoryKey] || []), ...GENERIC_RUG_TAGS]);\nconst onlyRepeatsSearch = (tag) => {\n  const words = CORE_WORDS[categoryKey] || [];\n  let rest = tag.slice(1);\n  if (!words.some((w) => rest.includes(w))) return false;\n  for (const w of [...words, ...FILLER]) rest = rest.split(w).join('');\n  return rest.length < 3;\n};\nconst isQueryTag = (tag) => excludedTags.has(tag) || onlyRepeatsSearch(tag);\nconst isGenericTag = (tag) => GENERIC_TAGS.has(tag);\n\nconst social = $('Merge Social Data1').first().json;\nconst data = social.socialData || {};\nconst instagram = data.instagram || [];\nconst pinterest = data.pinterest || [];\n\n// \"#NeutralRug\", \"neutralrug\" and \"#neutralrug!\" all become \"#neutralrug\"\nconst normTag = (t) => {\n  const s = String(t).trim().toLowerCase().replace(/^#+/, '').replace(/[^\\p{L}\\p{N}_]/gu, '');\n  return s ? `#${s}` : null;\n};\nconst tagsOf = (post) => {\n  let raw = post.hashtags;\n  if (typeof raw === 'string') raw = raw.split(/[\\s,]+/);\n  if (!Array.isArray(raw) || raw.length === 0) raw = String(post.caption || '').match(/#[\\p{L}\\p{N}_]+/gu) || [];\n  return [...new Set(raw.map(normTag).filter(Boolean))];      // each tag counted once per post\n};\nconst toInsight = (source) => (post) => ({\n  source,\n  caption: String(post.caption || '').slice(0, 500),\n  hashtags: tagsOf(post),\n  engagement: Math.max(0, Number(post.engagement) || 0),\n});\nconst insights = [...instagram.map(toInsight('instagram')), ...pinterest.map(toInsight('pinterest'))];\n\nconst counts = new Map();\nfor (const i of insights) for (const t of i.hashtags) counts.set(t, (counts.get(t) || 0) + 1);\nconst byCount = (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]);\nconst toList = (entries) => entries.map(([tag, count]) => ({ tag, count }));\nconst ranked = [...counts.entries()].filter(([tag]) => !isQueryTag(tag) && !isGenericTag(tag)).sort(byCount);\nconst topHashtags = toList(ranked.slice(0, MAX_HASHTAGS));\nconst excludedQueryTags = toList([...counts.entries()].filter(([tag]) => isQueryTag(tag)).sort(byCount));\nconst genericTagsRemoved = toList([...counts.entries()].filter(([tag]) => !isQueryTag(tag) && isGenericTag(tag)).sort(byCount));\n\n// Step B: engagement-weighted ranking. Engagement is not comparable across sources, so each post's weight is\n// its share of ITS OWN source's total engagement. A tag's score is the sum of the weights of the posts that use\n// it, averaged over the sources that have engagement data -> \"share of engagement\" in percent.\nconst sourceTotals = { instagram: 0, pinterest: 0 };\nfor (const i of insights) sourceTotals[i.source] += i.engagement;\nconst activeSources = Object.values(sourceTotals).filter((t) => t > 0).length;\nconst shareSum = new Map();\nfor (const i of insights) {\n  if (!sourceTotals[i.source]) continue;\n  const w = i.engagement / sourceTotals[i.source];\n  for (const t of i.hashtags) shareSum.set(t, (shareSum.get(t) || 0) + w);\n}\nconst sharePct = (tag) => Math.round(((shareSum.get(tag) || 0) / (activeSources || 1)) * 1000) / 10;\nconst topByEngagement = ranked\n  .map(([tag, count]) => ({ tag, count, engagement_share_pct: sharePct(tag) }))\n  .sort((a, b) => b.engagement_share_pct - a.engagement_share_pct || b.count - a.count || a.tag.localeCompare(b.tag))\n  .slice(0, MAX_HASHTAGS);\n\n// Step D: attribute mentions. The captions say far more than the hashtags (materials, construction, patterns,\n// styles, features, where the rug is used). For every attribute value: in how many posts it is mentioned (counted\n// once per post, from the caption text and the words of the hashtags) and its engagement share, computed like Step B.\n// Words hidden inside compound hashtags (e.g. #woolrunner) are not detected; the caption usually repeats them.\nconst ATTR_WORDS = {\n  material: { wool: /\\bwool(?:len)?\\b|\\bmerino\\b/, cotton: /\\bcotton\\b/, jute: /\\bjute\\b/, hemp: /\\bhemp\\b/, silk: /\\bsilk\\b/, polyester: /\\bpolyester\\b/, polypropylene: /\\bpolypropylene\\b/,\n    nylon: /\\bnylon\\b/, viscose: /\\bviscose\\b|\\brayon\\b/, acrylic: /\\bacrylic\\b/, microfiber: /\\bmicrofib(?:er|re)\\b/, chenille: /\\bchenille\\b/, blend: /\\bblend(?:ed)?\\b/,\n    synthetic: /\\bsynthetic\\b/, natural_fibers: /\\bnatural (?:fib(?:er|re)s?|materials?)\\b/ },\n  construction: { hand_tufted: /\\bhand[- ]?tufted\\b/, tufted: /(?<!hand[- ]?)\\btufted\\b/, hand_knotted: /\\bhand[- ]?knotted\\b/, handwoven: /\\bhand[- ]?woven\\b/,\n    flatweave: /\\bflat[- ]?weave\\b|\\bkilim\\b|\\bdhurrie\\b/, braided: /\\bbraided\\b/, block_printed: /\\bblock[- ]?print(?:ed|ing)?\\b/, machine_made: /\\bmachine[- ](?:made|woven)\\b/,\n    loop_and_cut: /\\bloop (?:and|&) cut\\b|\\bcut (?:and|&) loop\\b/, handmade: /\\bhand[- ]?made\\b|\\bhandcrafted\\b/ },\n  pile: { low: /\\blow[- ]?(?:pile|profile)\\b/, medium: /\\bmedium[- ]?pile\\b/, high: /\\bhigh[- ]?pile\\b/, shag: /\\bshag(?:gy)?\\b/ },\n  pattern: { striped: /\\bstrip(?:e|ed|es)\\b/, wavy: /\\bwav(?:y|es?)\\b/, geometric: /\\bgeometric\\b|\\bdiamond\\b|\\blattice\\b/, checkered: /\\bcheck(?:ered|ers?)\\b|\\bchecks\\b|\\bplaid\\b/,\n    abstract: /\\babstract\\b/, floral: /\\bfloral\\b|\\bflowers?\\b|\\bbotanical\\b/, medallion: /\\bmedallion\\b/, persian_oriental: /\\bpersian\\b|\\borient(?:al)?\\b/,\n    tribal: /\\btribal\\b|\\baztec\\b|\\bsouthwestern\\b/, moroccan: /\\bmoroccan\\b/, trellis: /\\btrellis\\b/, chevron: /\\bchevron\\b|\\bherringbone\\b/, distressed: /\\bdistressed\\b|\\bfaded\\b/,\n    textured: /\\btextur(?:ed|e)\\b|\\bhigh[- ]?low\\b|\\bcarved\\b/, border: /\\bborders?\\b/, solid: /\\bsolid\\b/ },\n  style: { modern: /\\bmodern\\b/, contemporary: /\\bcontemporary\\b/, minimalist: /\\bminimali(?:st|stic)\\b/, vintage: /\\bvintage\\b|\\bretro\\b/, traditional: /\\btraditional\\b|\\bclassic\\b/,\n    bohemian: /\\bboho\\b|\\bbohemian\\b/, farmhouse: /\\bfarmhouse\\b/, coastal: /\\bcoastal\\b|\\bnautical\\b/, scandinavian: /\\bscandinavian\\b|\\bscandi\\b/, industrial: /\\bindustrial\\b/,\n    mid_century: /\\bmid[- ]?century\\b/, maximalist: /\\bmaximalist\\b/, rustic: /\\brustic\\b/, luxury: /\\bluxur(?:y|ious)\\b|\\bluxe\\b/, organic: /\\borganic\\b/ },\n  colors: { neutral: /\\bneutrals?\\b/, cream: /\\bcream(?:y)?\\b/, white: /\\bwhite\\b/, gray: /\\bgr[ae]y\\b|\\bsilver\\b/, charcoal: /\\bcharcoal\\b/, beige: /\\bbeige\\b|\\boatmeal\\b/, taupe: /\\btaupe\\b/,\n    brown: /\\bbrown\\b|\\bchocolate\\b/, blue: /\\bblue\\b|\\bdenim\\b/, navy: /\\bnavy\\b/, teal: /\\bteal\\b|\\bturquoise\\b/, green: /\\bgreen\\b|\\bsage\\b|\\bemerald\\b/, olive: /\\bolive\\b/,\n    red: /\\bred\\b/, burgundy: /\\bburgundy\\b|\\bwine\\b/, coral: /\\bcoral\\b/, orange: /\\borange\\b|\\brust\\b/, pink: /\\bpink\\b|\\bblush\\b|\\brose\\b/, purple: /\\bpurple\\b|\\blavender\\b/,\n    multi: /\\bmulti[- ]?colou?r(?:ed)?\\b|\\bcolou?rful\\b/, black: /\\bblack\\b/, gold: /\\bgold\\b/, ivory: /\\bivory\\b/, tan: /\\btan\\b|\\bcamel\\b/, yellow: /\\byellow\\b/,\n    mustard: /\\bmustard\\b|\\bochre\\b/, terracotta: /\\bterra ?cotta\\b/ },\n  features: { washable: /\\bwashable\\b|\\bmachine[- ]wash/, non_slip: /\\bnon[- ]?slip\\b|\\banti[- ]?(?:slip|skid)\\b|\\bskid\\b/, stain_resistant: /\\bstain[- ]?(?:resistant|proof)\\b/,\n    water_resistant: /\\bwater[- ]?(?:resistant|proof|repellent)\\b|\\bwaterproof\\b/, pet_friendly: /\\bpet[- ]?friendly\\b/, easy_clean: /\\beasy[- ](?:clean|care)\\b/,\n    eco_friendly: /\\beco[- ]?friendly\\b|\\bsustainable\\b|\\bbiodegradable\\b/, soft_plush: /\\bplush\\b|\\bfluffy\\b/, lightweight: /\\blightweight\\b/, durable: /\\bdurable\\b|\\bwear[- ]resistant\\b/ },\n  usage: { kitchen: /\\bkitchens?\\b/, entryway: /\\bentry(?:way)?\\b|\\bfoyer\\b/, stairs: /\\bstairs?\\b|\\bstaircase\\b/, corridor: /\\bcorridors?\\b/, bedroom: /\\bbedrooms?\\b/, bathroom: /\\bbathrooms?\\b/,\n    living_room: /\\bliving[- ]?room\\b/, dining_room: /\\bdining[- ]?room\\b/, laundry_room: /\\blaundry\\b/, home_office: /\\b(?:home )?office\\b/, high_traffic: /\\bhigh[- ]traffic\\b/, narrow_spaces: /\\bnarrow\\b/ },\n};\nconst mentionText = (i) => `${i.caption} ${i.hashtags.map((h) => h.slice(1)).join(' ')}`.toLowerCase();\nconst mentionTexts = insights.map(mentionText);\nconst attributeMentions = {};\nfor (const [facet, table] of Object.entries(ATTR_WORDS)) {\n  const rows = [];\n  for (const [value, re] of Object.entries(table)) {\n    let posts = 0;\n    let weight = 0;\n    insights.forEach((i, idx) => {\n      if (!re.test(mentionTexts[idx])) return;\n      posts += 1;\n      if (sourceTotals[i.source]) weight += i.engagement / sourceTotals[i.source];\n    });\n    if (posts) rows.push({ value, posts, engagement_share_pct: Math.round((weight / (activeSources || 1)) * 1000) / 10 });\n  }\n  attributeMentions[facet] = rows.sort((a, b) => b.posts - a.posts || b.engagement_share_pct - a.engagement_share_pct || a.value.localeCompare(b.value)).slice(0, 8);\n}\n\n// Step C: balanced caption sample. Equal share of the budget per source; within a source the captions with the\n// highest engagement come first (ties keep the API order); whole captions first, cut at a word boundary.\nconst engagementOf = (p) => Math.max(0, Number(p.engagement) || 0);\nconst sample = (posts, budget) => {\n  let text = '';\n  for (const p of [...posts].sort((a, b) => engagementOf(b) - engagementOf(a))) {\n    const c = String(p.caption || '').replace(/\\s+/g, ' ').trim();\n    if (!c) continue;\n    if (text.length + c.length + 1 > budget) {\n      const room = budget - text.length - 1;\n      if (room > 20) text += ` ${c.slice(0, room).replace(/\\s+\\S*$/, '')}`;\n      break;\n    }\n    text += (text ? ' ' : '') + c;\n  }\n  return text.trim();\n};\nconst sources = [instagram, pinterest].filter((posts) => posts.some((p) => p.caption));\nconst share = sources.length ? Math.floor(CAPTION_BUDGET / sources.length) : 0;\nconst captionInsights = sources.map((posts) => sample(posts, share)).filter(Boolean).join(' ');\n\nconst detail = social.sourceDetail || {};\nconst analyzed = insights.length;\n\n// The posts' OWN dates: the snapshot date says when the data was collected, these say when the content was written\nconst DATE_KEYS = ['posted_at', 'created_at', 'timestamp', 'published_at', 'date'];\nconst OLD_POSTS_DAYS = 180;      // if even the newest post is older than this, the signals describe the past\nconst toTime = (v) => {\n  if (typeof v === 'number' && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;\n  const t = Date.parse(v);\n  return Number.isFinite(t) ? t : null;\n};\nconst postTime = (p) => { for (const k of DATE_KEYS) { const t = toTime(p[k]); if (t !== null) return t; } return null; };\nconst dateRange = (posts) => {\n  const ts = posts.map(postTime).filter((t) => t !== null).sort((a, b) => a - b);\n  if (!ts.length) return { n: 0, oldest: null, newest: null, newest_age_days: null };\n  const day = (t) => new Date(t).toISOString().slice(0, 10);\n  return { n: ts.length, oldest: day(ts[0]), newest: day(ts[ts.length - 1]), newest_age_days: Math.max(0, Math.floor((Date.now() - ts[ts.length - 1]) / 86400000)) };\n};\nconst postDates = { instagram: dateRange(instagram), pinterest: dateRange(pinterest) };\n\n// Update 1: data-quality warnings travel with the summary so later stages (and readers) can see them.\nconst MIN_POSTS = 20;       // fewer analysed posts than this = weak evidence\nconst STALE_DAYS = 30;      // snapshots older than this are \"not current\"\nconst ageDays = (iso) => {\n  const t = Date.parse(iso);\n  return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;\n};\nlet amazonSnapshot = null;\ntry { amazonSnapshot = $('Reshape Amazon Response').first().json.scrapedAt || null; } catch (e) { /* other branch may not have run */ }\nconst snapshots = {\n  instagram: social.snapshotDates?.instagram ?? null,\n  pinterest: social.snapshotDates?.pinterest ?? null,\n  blogs: social.snapshotDates?.blogs ?? null,\n  amazon: amazonSnapshot,\n};\nconst dataFreshness = Object.fromEntries(Object.entries(snapshots).map(([k, v]) => [k, { snapshot: v, age_days: v ? ageDays(v) : null }]));\nconst DATASET_NOTE = 'Social and blog signals come from a curated, stored snapshot (the Extern API, a stand-in for a third-party trend provider), not a live feed.';\nconst dataWarnings = [DATASET_NOTE];\nif (analyzed < MIN_POSTS) dataWarnings.push(`Only ${analyzed} social posts analysed (fewer than ${MIN_POSTS}): treat counts and rankings as weak evidence.`);\nfor (const [k, r] of Object.entries(postDates)) {\n  if (r.n > 0 && r.newest_age_days > OLD_POSTS_DAYS) dataWarnings.push(`${k} posts are dated ${r.oldest} to ${r.newest} (the newest is ${r.newest_age_days} days old): they show past interest, not current trends.`);\n}\nfor (const [k, f] of Object.entries(dataFreshness)) {\n  if (f.age_days !== null && f.age_days > STALE_DAYS) dataWarnings.push(`${k} data snapshot is ${f.age_days} days old (${String(f.snapshot).slice(0, 10)}): not current.`);\n}\nconst anyPostDates = Object.values(postDates).some((r) => r.n > 0);\nif (Object.values(dataFreshness).every((f) => f.age_days === null)) dataWarnings.push(`The snapshot collection date was not provided by the API (being confirmed with the program team).${anyPostDates ? '' : ' Post dates are also missing: data freshness is unknown.'}`);\n\nreturn [{\n  json: {\n    imageAnalysis: {\n      trend_summary: {\n        top_hashtags: topHashtags,                 // ranked by number of posts; query-defining tags removed\n        top_hashtags_by_engagement: topByEngagement,   // ranked by share of engagement (Step B)\n        engagement_basis: \"engagement_share_pct = % of each source's total engagement held by posts using the tag, averaged across sources\",\n        excluded_query_tags: excludedQueryTags,    // tags that only repeat the search, e.g. [{ tag: '#arearug', count: 12 }]\n        generic_tags_removed: genericTagsRemoved,  // generic community tags, e.g. #ruglovers, #interiordesign\n        attribute_mentions: attributeMentions,     // per attribute group: posts mentioning each value (Step D)\n        attribute_mentions_basis: 'Counted once per post from the caption text and hashtag words; engagement_share_pct is computed like the hashtag ranking. Words inside compound hashtags (e.g. #woolrunner) are not detected.',\n        total_posts_analyzed: analyzed,\n        instagram_count: instagram.length,\n        pinterest_count: pinterest.length,\n        post_dates: postDates,                     // each source's oldest/newest post date and the newest post's age\n        caption_insights: captionInsights,\n        data_warnings: dataWarnings,               // sample size and data freshness (Update 1)\n      },\n      source: 'social_captions_and_hashtags',\n    },\n    socialInsights: insights,      // caption/hashtag objects (\"socialImages\" is reserved for real images)\n    analysisSuccess: analyzed > 0,\n    reason: analyzed > 0 ? 'Using social captions and hashtags for trend analysis' : 'No Instagram or Pinterest posts available for analysis',\n    dataFreshness,\n    sourcesUnavailable: Object.entries(detail).filter(([, s]) => s === 'failed' || s === 'not_run').map(([k]) => k),\n  },\n}];\n"
+      },
+      "id": "c96cb5ad-554a-43dc-abc6-3e4cce6357bc",
+      "name": "Merge Image Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Fetch Instagram": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pinterest": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Fetch Blogs": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Fetch Market Data": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge api data": {
+      "main": [
+        [
+          {
+            "node": "Merge Social Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Social Data1": {
+      "main": [
+        [
+          {
+            "node": "Merge Image Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

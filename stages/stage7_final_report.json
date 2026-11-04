@@ -1,0 +1,121 @@
+{
+  "name": "Stage 7 - Final Report",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Collect All Sections | Mode: Run Once for All Items\n// Gathers everything the final report needs into ONE item.\n// The section HTML comes from Check Sections (already cleaned, with a visible placeholder for any section that failed).\n// The images come from Encode to Base and are matched to the trend segments the same way Collect Report Data matches them.\n// Social post images are NOT included: they are third-party photos and the report says images were not analysed.\nconst safe = (fn, fallback) => { try { const v = fn(); return v === undefined || v === null ? fallback : v; } catch (e) { return fallback; } };\nconst arr = (v) => (Array.isArray(v) ? v : []);\nconst key = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');\n\nconst checked = safe(() => $('Check Sections').first().json, {}) || {};\nconst collected = safe(() => $('Collect Report Data').first().json.report, {}) || {};\n\nconst DEFAULT_ORDER = ['executive_summary', 'scope', 'market_research', 'category', 'attributes', 'visual_trends', 'risks', 'recommendations'];\nconst order = arr(checked.section_order).length ? arr(checked.section_order) : DEFAULT_ORDER;\nconst sections = checked.report_sections && typeof checked.report_sections === 'object' ? checked.report_sections : {};\n\n// images: one per trend segment, matched by name first and by position second; only valid base64 is kept\nconst segments = arr(collected.segments);\nconst encoded = safe(() => $('Encode to Base').all().map((i) => i.json), []);\nconst images = segments.map((s, idx) => {\n  const match = encoded.find((e) => key(e.segmentName) === key(s.name)) || (encoded.length === segments.length ? encoded[idx] : null);\n  const b64 = match && match.hasImage ? String(match.base64Image || '').replace(/\\s+/g, '') : '';\n  const valid = b64.length > 20 && /^[A-Za-z0-9+/]+={0,2}$/.test(b64);\n  const mime = match && /^image\\/(jpeg|png|webp)$/.test(String(match.mimeType)) ? match.mimeType : 'image/jpeg';\n  return { n: s.n, name: String(s.name || ''), mimeType: valid ? mime : null, base64: valid ? b64 : null };\n});\n\n// date: the day the sections were generated (UTC), formatted for people\nconst iso = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(checked.generated_on)) ? checked.generated_on : new Date().toISOString().slice(0, 10);\nconst date = new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });\n\nreturn [{\n  json: {\n    sections,\n    order,\n    status: checked.section_status || {},\n    notes: checked.section_notes || {},\n    failed: arr(checked.failed_sections),\n    review: arr(checked.sections_needing_review),\n    ready: checked.ready === true,\n    imagePlan: arr(checked.image_plan),\n    dataWarnings: arr(checked.data_warnings),\n    images,\n    metadata: { category: String(checked.category || collected.category || 'Rug'), date, isoDate: iso },\n  },\n}];"
+      },
+      "id": "106e461e-8832-462c-b7be-611afd6cbaa8",
+      "name": "Collect All Sections",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Assemble HTML Report | Mode: Run Once for All Items\n// Builds ONE self-contained HTML page: no external fonts, scripts or links, so it opens offline and cannot call out.\n//  - sections are put in the order Check Sections gave, each in its own <section>\n//  - [[IMAGE_n]] tokens in the Visual Trend Story become embedded images (with the real image type); an image whose token\n//    the model forgot is added to the end of that section, so no illustration is lost\n//  - a banner at the top says so when a section failed or needs review: the report never hides a gap\n//  - everything inserted from data is escaped\nconst d = $input.first().json;\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst sections = d.sections || {};\nconst order = Array.isArray(d.order) ? d.order : [];\nconst images = Array.isArray(d.images) ? d.images : [];\nconst meta = d.metadata || {};\nconst category = meta.category || 'Rug';\nconst date = meta.date || '';\n\nconst TITLES = {\n  executive_summary: 'Executive Summary', scope: 'Scope of Research', market_research: 'Market and Customer Insights',\n  category: 'Category Deep Dive and Sizing', attributes: 'Attribute and Assortment Analysis', visual_trends: 'Visual Trend Story',\n  risks: 'Risks and Watchouts', recommendations: 'Demand Signals and Recommendations',\n};\n\n// defence in depth: Check Sections already removed these, but the page must never carry them\nconst clean = (h) => String(h ?? '')\n  .replace(/```[a-z]*\\s*/gi, '')\n  .replace(/<(script|style|iframe|object|embed|link|meta|base|form)\\b[\\s\\S]*?(<\\/\\1\\s*>|$)/gi, '')\n  .replace(/\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)/gi, '')\n  .replace(/javascript:/gi, '')\n  .trim();\n\nconst figure = (img) => `<figure class=\"moodboard\"><img src=\"data:${img.mimeType};base64,${img.base64}\" alt=\"AI-generated illustration of the ${esc(img.name)} style\"><figcaption>${esc(img.name)}: AI-generated illustration of the style, not a product photo</figcaption></figure>`;\nconst byN = new Map(images.map((i) => [Number(i.n), i]));\nconst used = new Set();\n\nconst renderSection = (k) => {\n  let h = clean(sections[k]);\n  if (k === 'visual_trends') {\n    h = h.replace(/<p>\\s*\\[\\[IMAGE_(\\d+)\\]\\]\\s*<\\/p>|\\[\\[IMAGE_(\\d+)\\]\\]/g, (m, a, b) => {\n      const n = Number(a || b);\n      const img = byN.get(n);\n      if (!img || !img.base64 || used.has(n)) return '';\n      used.add(n);\n      return figure(img);\n    });\n    // illustrations whose token the model left out: add them, so the report always shows every image it has\n    const left = images.filter((i) => i.base64 && !used.has(Number(i.n)));\n    if (left.length) {\n      left.forEach((i) => used.add(Number(i.n)));\n      h += `<h3>Illustrations</h3><div class=\"gallery\">${left.map(figure).join('')}</div>`;\n    }\n  }\n  h = h.replace(/\\[\\[IMAGE_\\d+\\]\\]/g, '');\n  return `<section id=\"${esc(k)}\">${h}</section>`;\n};\n\nconst body = order.filter((k) => typeof sections[k] === 'string' && sections[k].trim()).map(renderSection).join('\\n');\n\n// banner: sections that failed or need review are named at the top of the report\nconst failed = Array.isArray(d.failed) ? d.failed : [];\nconst review = Array.isArray(d.review) ? d.review : [];\nconst name = (k) => esc(TITLES[k] || k);\nconst banner = failed.length || review.length\n  ? `<div class=\"banner\"><strong>Incomplete report.</strong> ${failed.length ? `Not generated: ${failed.map(name).join(', ')}. ` : ''}${review.length ? `Needs review before use: ${review.map(name).join(', ')}.` : ''}</div>`\n  : '';\n\nconst CSS = [\n  ':root { --primary:#7C3AED; --primary-light:#A78BFA; --secondary:#1F2937; --bg:#F9FAFB; --card:#FFFFFF; --border:#E5E7EB; --text:#1F2937; --muted:#6B7280; --warn:#92400E; --warn-bg:#FEF3C7; }',\n  '* { margin:0; padding:0; box-sizing:border-box; }',\n  'body { font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; font-size:14px; line-height:1.6; color:var(--text); background:var(--bg); }',\n  '.report-container { max-width:1000px; margin:0 auto; padding:40px 24px; }',\n  '.report-header { background:linear-gradient(135deg,var(--primary) 0%,#5B21B6 100%); color:#fff; padding:44px 40px; border-radius:16px; margin-bottom:24px; }',\n  '.report-header h1 { font-size:30px; font-weight:700; margin-bottom:8px; }',\n  '.report-header .subtitle { font-size:16px; opacity:.9; }',\n  '.report-header .meta { margin-top:14px; font-size:13px; opacity:.85; }',\n  '.banner { background:var(--warn-bg); color:var(--warn); border-left:4px solid #F59E0B; border-radius:8px; padding:14px 18px; margin-bottom:24px; }',\n  'section { background:var(--card); border-radius:12px; padding:32px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,.1); }',\n  'section h2 { font-size:22px; font-weight:600; margin-bottom:20px; padding-bottom:12px; border-bottom:2px solid var(--primary-light); }',\n  'section h3 { font-size:16px; font-weight:600; color:var(--primary); margin:22px 0 10px 0; }',\n  'p { margin-bottom:12px; }',\n  'ul, ol { margin:0 0 14px 22px; }',\n  'li { margin-bottom:6px; }',\n  'table { width:100%; border-collapse:collapse; margin:14px 0 18px 0; font-size:13px; }',\n  'th, td { border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top; }',\n  'th { background:#F3F4F6; font-weight:600; }',\n  'tbody tr:nth-child(even) td { background:#FAFAFA; }',\n  'figure.moodboard { margin:18px 0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg); }',\n  'figure.moodboard img { display:block; width:100%; height:auto; max-height:520px; object-fit:cover; }',\n  'figure.moodboard figcaption { padding:10px 14px; font-size:12px; color:var(--muted); }',\n  '.gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }',\n  '.report-footer { text-align:center; padding:28px; color:var(--muted); font-size:12px; }',\n  '@media (max-width:768px) { .report-header { padding:28px 20px; } .report-header h1 { font-size:22px; } section { padding:20px; } table { display:block; overflow-x:auto; } }',\n  '@media print { body { background:#fff; } section { box-shadow:none; break-inside:avoid-page; } }',\n].join('\\n');\n\nconst html = '<!DOCTYPE html>' +\n  '<html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +\n  `<title>${esc(category)} Trend Report</title><style>${CSS}</style></head><body><div class=\"report-container\">` +\n  `<header class=\"report-header\"><h1>${esc(category)} Trend Report</h1><p class=\"subtitle\">Market Intelligence and Trend Analysis</p>` +\n  `<p class=\"meta\">Generated: ${esc(date)} | Retail Market Trend Discovery workflow</p></header>` +\n  banner +\n  `<main>${body}</main>` +\n  `<footer class=\"report-footer\"><p>Counts, shares and prices are computed by the workflow. Text sections were written by an AI model from the sources listed in the Scope of Research. Illustrations are AI-generated.</p><p>${esc(date)}</p></footer>` +\n  '</div></body></html>';\n\nreturn [{ json: { cleanedHtml: html, imagesPlaced: used.size } }];"
+      },
+      "id": "a68a7f94-f93a-4408-a44d-502f98e3e23a",
+      "name": "Assemble HTML Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Section Validator1 | Mode: Run Once for All Items\n// Checks the finished page against what Check Sections reported and what the page really contains.\n// isValid is true only when every section is present and was generated, no image token is left,\n// every image that existed was embedded, and the page is complete.\nconst safe = (fn, fallback) => { try { const v = fn(); return v === undefined || v === null ? fallback : v; } catch (e) { return fallback; } };\nconst arr = (v) => (Array.isArray(v) ? v : []);\nconst input = $input.first().json;\nconst html = String(input.cleanedHtml || '');\nconst info = safe(() => $('Collect All Sections').first().json, {}) || {};\n\nconst REQUIRED = [\n  ['executive_summary', 'Executive Summary'], ['scope', 'Scope of Research'], ['market_research', 'Market and Customer Insights'],\n  ['category', 'Category Deep Dive and Sizing'], ['attributes', 'Attribute and Assortment Analysis'], ['visual_trends', 'Visual Trend Story'],\n  ['risks', 'Risks and Watchouts'], ['recommendations', 'Demand Signals and Recommendations'],\n];\nconst PLACEHOLDER = /could not be generated automatically|could not be built/i;\nconst validation = { isValid: true, sectionsFound: [], sectionsMissing: [], sectionsFailed: [], sectionsNeedingReview: arr(info.review), imageCount: 0, expectedImages: 0, warnings: [] };\n\nfor (const [k, title] of REQUIRED) {\n  const m = html.match(new RegExp(`<section id=\"${k}\">([\\\\s\\\\S]*?)</section>`));\n  if (!m) { validation.sectionsMissing.push(title); continue; }\n  if (PLACEHOLDER.test(m[1])) validation.sectionsFailed.push(title); else validation.sectionsFound.push(title);\n}\nvalidation.imageCount = (html.match(/<img\\s[^>]*src=\"data:image\\/(?:jpeg|png|webp);base64,/g) || []).length;\nvalidation.expectedImages = arr(info.images).filter((i) => i && i.base64).length;\n\nif (validation.sectionsMissing.length) validation.warnings.push(`Missing sections: ${validation.sectionsMissing.join(', ')}`);\nif (validation.sectionsFailed.length) validation.warnings.push(`Sections that could not be generated: ${validation.sectionsFailed.join(', ')}`);\nif (validation.sectionsNeedingReview.length) validation.warnings.push(`Sections that need review: ${validation.sectionsNeedingReview.join(', ')}`);\nif (validation.expectedImages === 0) validation.warnings.push('No images were available to embed');\nelse if (validation.imageCount < validation.expectedImages) validation.warnings.push(`Only ${validation.imageCount} of ${validation.expectedImages} images were embedded`);\nif (/\\[\\[IMAGE_\\d+\\]\\]/.test(html)) validation.warnings.push('An image placeholder was left in the text');\nif (/<script\\b/i.test(html)) validation.warnings.push('The page contains a script tag');\nif (!/<\\/html>\\s*$/.test(html.trim())) validation.warnings.push('The HTML looks cut off');\nif (html.length > 15 * 1024 * 1024) validation.warnings.push('The page is larger than 15 MB');\n\nvalidation.isValid = !validation.sectionsMissing.length && !validation.sectionsFailed.length && !validation.sectionsNeedingReview.length\n  && validation.imageCount >= validation.expectedImages && !validation.warnings.some((w) => /placeholder was left|script tag|cut off|larger than/.test(w));\n\nreturn [{ json: { cleanedHtml: html, validation } }];"
+      },
+      "id": "e66f0e57-fdfd-4445-b448-9b64cb72b312",
+      "name": "Section Validator1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Download Final Report | Mode: Run Once for All Items\n// Turns the page into a downloadable .html file (Binary > data) and adds the file name and the validation result.\nconst input = $input.first().json;\nconst html = String(input.cleanedHtml || '');\nconst validation = input.validation || {};\nconst info = (() => { try { return $('Collect All Sections').first().json; } catch (e) { return {}; } })() || {};\nconst meta = info.metadata || {};\nconst category = String(meta.category || 'Rug');\nconst dateStr = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(meta.isoDate)) ? meta.isoDate : new Date().toISOString().slice(0, 10);\nconst slug = category.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'rug';\nconst fileName = `${slug}_trend_report_${dateStr}.html`;\n\nconst buffer = Buffer.from(html, 'utf8');\nlet binaryData;\ntry {\n  binaryData = await this.helpers.prepareBinaryData(buffer, fileName, 'text/html');\n} catch (e) {\n  binaryData = { data: buffer.toString('base64'), mimeType: 'text/html', fileName };\n}\n\nreturn [{\n  json: { fileName, category, validation, sizeKB: Math.round(buffer.length / 1024), generatedAt: new Date().toISOString(), ready: validation.isValid === true },\n  binary: { data: binaryData },\n}];"
+      },
+      "id": "cb01eb71-b4c4-40a6-ba5d-26e289dab186",
+      "name": "Download Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Stage 7: final report\n**Before running:** connect **Check Sections** to **Collect All Sections**.\n\nThe report reads the cleaned sections from Check Sections and the images from Encode to Base. No AI model is used in these four nodes, so they cost no tokens.\n\n**Output:** open **Download Final Report** > Binary > data to download the .html file. Its `validation` field says whether every section and image made it in.",
+        "height": 260,
+        "width": 520,
+        "color": 4
+      },
+      "id": "d322a3d4-23e2-4d47-b7b9-05a717aeb14b",
+      "name": "Stage 7 notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -360
+      ]
+    }
+  ],
+  "connections": {
+    "Collect All Sections": {
+      "main": [
+        [
+          {
+            "node": "Assemble HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Section Validator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Section Validator1": {
+      "main": [
+        [
+          {
+            "node": "Download Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

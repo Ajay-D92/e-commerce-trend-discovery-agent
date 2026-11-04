@@ -1,0 +1,243 @@
+{
+  "name": "Stage 4 - Illustrations",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "34b462b8-f649-4e44-a73b-5e2a8749b7c8",
+              "leftValue": "={{ $json.segment }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6100564c-e1c2-4c32-b44d-43330e8faaaf",
+      "name": "Check Segment Exists1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6112,
+        -624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split micro-segments for individual image generation (course code + reason)\nconst t = $input.first().json;\nconst segments = t.microSegments || [];\n\nif (segments.length === 0) {\n  return [{ json: { segment: null, skip: true, errorReason: t.errorReason || 'no_segments' } }];\n}\n\nreturn segments.map(segment => ({ json: { segment, errorReason: null } }));"
+      },
+      "id": "1f7381aa-f390-4827-a3ab-abe14a97bf47",
+      "name": "Split Segments for Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5808,
+        -624
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6336,
+        -720
+      ],
+      "id": "381fc164-0ffb-4583-bf85-3bef7fb961f0",
+      "name": "Wait3",
+      "webhookId": "c79ecb8c-c3e6-409b-ba12-22de697722e7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=MICRO-SEGMENT:\nName: {{ $json.segment.name }}\nDescription: {{ $json.segment.description }}\nVisual Characteristics: {{ $json.segment.visual_characteristics.join(', ') }}\nColor Palette: {{ $json.segment.color_palette.join(', ') }}\nMaterials: {{ $json.segment.typical_materials.join(', ') }}\nTarget Rooms: {{ $json.segment.target_rooms.join(', ') }}\nKeywords: {{ $json.segment.image_prompt_keywords.join(', ') }}\n\nRUG CATEGORY: {{ $('Input Parser1').first().json.selectedCategory }}",
+        "options": {
+          "systemMessage": "You are an expert image generation prompt engineer specializing in interior design photography and moodboards.\n\nCreate a detailed prompt for generating a photorealistic moodboard image showcasing this rug style.\n\nThe image should feature:\n1. A beautiful, realistic interior room setting appropriate for the rug style\n2. The rug as the clear focal point, showing its pattern, texture, and colors\n3. Complementary furniture and decor that enhances the rug's aesthetic\n4. Natural, warm lighting that highlights textures\n5. Professional interior photography composition\n\nPROMPT REQUIREMENTS:\n- Write as a single flowing paragraph\n- Be specific about colors (use exact color names)\n- Describe materials and textures in detail\n- Include the room type and atmosphere\n- Mention lighting quality\n- Keep under 150 words\n- Do NOT use bullet points or lists\n- Do NOT include any markdown formatting\n\nOUTPUT: Only the prompt text, nothing else. No quotes, no explanations, no labels."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        6560,
+        -720
+      ],
+      "id": "81868f82-1ef5-4e87-ac0e-0c09810b7484",
+      "name": "Generate Image Prompt"
+    },
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {
+          "maxTokens": 4096,
+          "temperature": 0.5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        6432,
+        -512
+      ],
+      "id": "254b2cf0-7767-45ed-ac6a-2ff19cb1aab9",
+      "name": "OpenRouter Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean Prompt: one item per segment; segment name comes from Wait3 (the agent output only has \"output\")\nconst items = $input.all();\nconst segs = $('Wait3').all();\nconst plain = (s, n) => String(s ?? '').replace(/\\r?\\n/g, ' ').replace(/[*#`_>\\[\\]{}\\\\]/g, ' ').replace(/\"/g, \"'\").replace(/\\s+/g, ' ').trim().slice(0, n);\n\nreturn items.map((item, i) => {\n  const seg = (segs[i] && segs[i].json && segs[i].json.segment) || {};\n  const segmentName = plain(seg.name, 60) || 'Style';\n  let prompt = plain(item.json.output, 1000);\n\n  // AI step failed or returned nothing: build a plain prompt from the segment itself\n  const aiPrompt = prompt.length >= 40;\n  if (!aiPrompt) {\n    const join = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => plain(x, 40)).filter(Boolean).join(', ');\n    const room = join(seg.target_rooms, 1) || 'living room';\n    prompt = `A ${room} with a ${segmentName} rug as the focal point, ${join(seg.visual_characteristics, 3)}, colors ${join(seg.color_palette, 3)}, materials ${join(seg.typical_materials, 2)}`;\n    prompt = plain(prompt, 600);\n  }\n\n  if (!prompt.toLowerCase().includes('professional')) prompt = 'Professional interior design photography, ' + prompt;\n  if (!prompt.toLowerCase().includes('high quality')) prompt += ', high quality, detailed textures, natural lighting';\n\n  return { json: { prompt, segmentName, promptSource: aiPrompt ? 'ai' : 'segment_fallback' } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6928,
+        -720
+      ],
+      "id": "990e096f-7c3d-462b-8427-12776f455405",
+      "name": "Clean Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudflare.com/client/v4/accounts/6b87e7fdba7f635087352ce338fe85fa/ai/run/@cf/black-forest-labs/flux-1-schnell",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prompt: $json.prompt.slice(0, 2000), steps: 4 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        7152,
+        -720
+      ],
+      "id": "295e1d32-4bf5-459d-9ecd-571b123e73ab",
+      "name": "Generate Image"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the base64 image from the Cloudflare Workers AI JSON response and carry the segment's evidence with it\nconst items = $input.all();\nconst results = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n\n  // works whether \"Full Response\" is on or off\n  const body = item.json.result ? item.json : (item.json.body || {});\n  const base64 = body.result && body.result.image ? body.result.image : '';\n\n  // the n8n position of this item in the node before (pairedItem), falling back to its place in the list\n  const idx = item.pairedItem && item.pairedItem.item !== undefined ? item.pairedItem.item : i;\n\n  // segment name from Clean Prompt; evidence fields from Wait3 (the saved segment), both matched by position\n  let segmentName = item.json.segmentName || 'Style';\n  try {\n    const src = $('Clean Prompt').all()[idx]; // use YOUR node's exact name\n    if (src && src.json.segmentName) segmentName = src.json.segmentName;\n  } catch (e) { /* keep the fallback */ }\n\n  let seg = {};\n  try {\n    const s = $('Wait3').all()[idx];\n    if (s && s.json && s.json.segment) seg = s.json.segment;\n  } catch (e) { /* no evidence available */ }\n\n  const evidence = {\n    description: seg.description || '',\n    support_level: seg.support_level || 'unverified',\n    confidence: seg.confidence || 'low',\n    weakest_attribute: seg.weakest_attribute || null,\n    trend_signals: Array.isArray(seg.trend_signals) ? seg.trend_signals : [],\n  };\n\n  if (base64) {\n    results.push({\n      json: { segmentName, base64Image: base64, mimeType: 'image/jpeg', hasImage: true, ...evidence },\n    });\n  } else {\n    results.push({\n      json: { segmentName, base64Image: null, mimeType: null, hasImage: false, error: 'No image in response', ...evidence },\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7376,
+        -720
+      ],
+      "id": "73264456-ac64-4558-86d3-db5d14ce0350",
+      "name": "Encode to Base"
+    }
+  ],
+  "connections": {
+    "Split Segments for Images": {
+      "main": [
+        [
+          {
+            "node": "Check Segment Exists1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Segment Exists1": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Generate Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Image Prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Clean Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image": {
+      "main": [
+        [
+          {
+            "node": "Encode to Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encode to Base": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": false
+}

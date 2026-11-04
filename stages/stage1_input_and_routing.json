@@ -1,0 +1,122 @@
+{
+  "name": "Rug Input Validation - Stage 1 Input & Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c7d08e09-a44d-4b45-ae7e-eecebf0a8daf",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "2ff80e91-59b5-4770-ace4-3f0f74e6e247"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// STAGE 1: Input Parser1 (merged v4) | Mode: Run Once for All Items\n// Extracts the rug category + an optional focus keyword from the Chat Trigger field `chatInput`.\n// No external calls.\n//\n// PARSING RULES\n// 1. Focus clause: \"focus: <value>\" or \"focus = <value>\" (case-insensitive). The value runs to the end of\n//    the line or a semicolon. A comma ends the value ONLY when a category phrase follows it\n//    (\"focus: washable, outdoor rug\"); otherwise commas stay in the focus (\"focus: soft, plush\").\n// 2. The category is detected ONLY in the text outside the focus value. Category words inside the focus\n//    value are never used for routing and are never silently dropped (see parse_note).\n// 3. A category phrase inside the focus value with no category outside it (e.g. \"FOCUS:Washable Hallway\n//    Runner\") is rejected as ambiguous. Use a comma: \"hallway runner, focus: washable\".\n// 4. If several categories match, precedence is Outdoor Rug > Hallway Runner > Shag Rug > Area Rug.\n//    `all_matches` lists every match in that order.\nconst SEP = '[\\\\s-]+';\nconst CATEGORIES = [\n  { key: 'outdoor_rug',    display: 'Outdoor Rug',    re: new RegExp(`\\\\b(?:(?:outdoors?|indoor[\\\\s/-]+outdoor)(?:${SEP}[a-z]+){0,2}?${SEP}rugs?|patio${SEP}rugs?)\\\\b`, 'i') },\n  { key: 'hallway_runner', display: 'Hallway Runner', re: new RegExp(`\\\\b(?:hall(?:way)?${SEP}runners?|runner${SEP}rugs?|rug${SEP}runners?)\\\\b`, 'i') },\n  { key: 'shag_rug',       display: 'Shag Rug',       re: new RegExp(`\\\\bshag(?:gy)?(?:${SEP}[a-z]+)?${SEP}rugs?\\\\b`, 'i') },\n  { key: 'area_rug',       display: 'Area Rug',       re: new RegExp(`\\\\barea${SEP}rugs?\\\\b`, 'i') },\n];\nconst FOCUS_RE = /\\bfocus\\s*[:=]\\s*([^\\n;]*)/i;\nconst MAX_FOCUS_LENGTH = 60;\n\nconst findMatches = (text) => CATEGORIES.filter((c) => c.re.test(text));\n\nreturn $input.all().map((item, index) => {\n  const original = String(item.json.chatInput ?? '').trim();\n\n  let focusKeyword = null;\n  let focusValue = '';\n  let categoryText = original;\n\n  const m = original.match(FOCUS_RE);\n  if (m) {\n    focusValue = m[1];\n    const valueStart = m.index + m[0].length - m[1].length;\n    // A comma followed by a category phrase ends the focus value.\n    for (let i = focusValue.indexOf(','); i !== -1; i = focusValue.indexOf(',', i + 1)) {\n      if (findMatches(focusValue.slice(i + 1)).length > 0) { focusValue = focusValue.slice(0, i); break; }\n    }\n    categoryText = `${original.slice(0, m.index)} ${original.slice(valueStart + focusValue.length)}`;\n    focusKeyword = focusValue.replace(/\\s+/g, ' ').replace(/[.!?\\s]+$/, '').trim().toLowerCase().slice(0, MAX_FOCUS_LENGTH) || null;\n  }\n\n  const matches = findMatches(categoryText);\n  const selected = matches[0] ?? null;\n  const inFocus = findMatches(focusValue).map((c) => c.display);\n\n  let parseNote = null;\n  let errorReason = null;\n  if (!selected) {\n    errorReason = 'no_category';\n    if (inFocus.length > 0) {\n      errorReason = 'category_in_focus_ambiguous';\n      parseNote = `I found \"${inFocus[0]}\" inside the focus value, so I can't tell whether it is the category or part of the focus. Separate them with a comma, e.g. \"${inFocus[0].toLowerCase()}, focus: washable\".`;\n    }\n  } else if (inFocus.length > 0) {\n    parseNote = `Category words inside the focus value were kept as focus text and not used for routing: ${inFocus.join(', ')}.`;\n  }\n\n  return {\n    // pairedItem links each output item to its input item, so later nodes can use\n    // $('Input Parser1').item.json.<field> reliably.\n    pairedItem: { item: index },\n    json: {\n      // Core fields\n      original_message: original,\n      category: selected ? selected.display : null,\n      focus_keyword: focusKeyword,\n      is_valid: selected !== null,\n      all_matches: matches.map((c) => c.display),\n      parse_note: parseNote,\n      // Convenience fields (compatible with the earlier v2 parser)\n      selectedCategory: selected ? selected.display : null,\n      categoryKey: selected ? selected.key : null,\n      focus: focusKeyword ?? '',\n      hasCategory: selected !== null,\n      hasValidInput: selected !== null,\n      errorReason,\n    },\n  };\n});\n"
+      },
+      "id": "3643b863-26b2-4fcc-aa08-5b4dd3a4309b",
+      "name": "Input Parser1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "26542fb1-8a8b-44c9-a75a-a475f23c909f",
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "39c8942e-1038-472a-a22c-0dc75eedbde3",
+      "name": "Category Validator1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// STAGE 1: Error Response1 (merged v4) | Mode: Run Once for All Items\n// Terminal node for invalid input. With the Chat Trigger in \"When Last Node Finishes\" mode (the\n// default for a private chat), the chat widget displays the `output` field, so that field is required.\n// `error`, `message` and `reason` are extra structured fields for later stages and debugging.\nconst NO_CATEGORY =\n  'I could not detect a rug category. Please include one of:\\n- Area Rug\\n- Outdoor Rug\\n- Hallway Runner\\n- Shag Rug\\n\\n**Example input:**\\noutdoor rug, focus: washable';\nconst NO_PRODUCTS =\n  'No products were returned for this category. The pre-scraped dataset may not have refreshed yet, or the program API may be temporarily unavailable. Try again in a few minutes, or contact the program team if this persists.';\nconst UNKNOWN = 'An unknown error occurred. Please try again or contact the program team.';\n// Stage 3 reasons\nconst AI_UNAVAILABLE = 'The AI service could not be reached or returned an error (for example, the API account may be out of credits). Please try again later or contact the program team.';\nconst NO_VALID_PRODUCTS = 'None of the products returned matched the selected category, so there is nothing to analyse. Try another category or contact the program team.';\nconst NO_SEGMENTS = 'I could not identify any clear trend segments from the available data (too little or too mixed). Try a different category or focus.';\nconst AI_OUTPUT_INVALID = 'The AI returned an answer I could not read safely. Please try again.';\n\n// Items reaching this node come either from Input Parser1 (they carry `errorReason`) or from the\n// \"Has Products?\" False branch (raw API response: total_products = 0, or a failed request with `error`).\nconst inferReason = (json) => {\n  if (json.errorReason) return json.errorReason;\n  // No errorReason: the item is an API response. A failed request (`error`) or zero / missing\n  // total_products both mean \"no products\" (the message also covers the API being unavailable).\n  const apiProblem = json.error !== undefined || !(Number(json.total_products) > 0);\n  return apiProblem ? 'no_products' : 'unknown';\n};\n\nreturn $input.all().map((item, index) => {\n  const reason = inferReason(item.json);\n\n  let message;\n  if (reason === 'no_category') {\n    message = NO_CATEGORY;\n  } else if (reason === 'category_in_focus_ambiguous') {\n    message = `${NO_CATEGORY}\\n\\n${item.json.parse_note || ''}`.trim();\n  } else if (reason === 'no_products') {\n    message = NO_PRODUCTS;\n  } else if (reason === 'ai_unavailable') {\n    message = AI_UNAVAILABLE;\n  } else if (reason === 'no_valid_products') {\n    message = NO_VALID_PRODUCTS;\n  } else if (reason === 'no_segments') {\n    message = NO_SEGMENTS;\n  } else if (reason === 'ai_output_invalid') {\n    message = AI_OUTPUT_INVALID;\n  } else {\n    message = UNKNOWN;\n  }\n\n  return { pairedItem: { item: index }, json: { output: message, error: true, message, reason } };\n});\n"
+      },
+      "id": "cb5e100e-5a9a-4e7f-ad1f-d97512215282",
+      "name": "Error Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Input Parser1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Parser1": {
+      "main": [
+        [
+          {
+            "node": "Category Validator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category Validator1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Error Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
