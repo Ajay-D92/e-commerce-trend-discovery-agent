@@ -1,20 +1,72 @@
 # Retail Trend Discovery Agent
 
-[![tests](https://github.com/Ajay-D92/e-commerce-trend-discovery-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/Ajay-D92/e-commerce-trend-discovery-agent/actions/workflows/tests.yml)
+[![Tests](https://github.com/Ajay-D92/e-commerce-trend-discovery-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/Ajay-D92/e-commerce-trend-discovery-agent/actions/workflows/tests.yml)
 
-An n8n agent that turns a one-line chat request into a trend report, or into a brief written for one team.
+An n8n workflow that turns a one-line request, such as "area rug brief for marketing", into a trend report or a brief for one team. It builds the result from product listings, social posts and articles.
 
-```
+**Status:** a working prototype on a stored data snapshot. It has not been tested with real users or against real sales.
+**Context:** built during the Wayfair AI Automation Externship (Extern) by Ajay Dhankar.
+
+**See it in 60 seconds:** [marketing brief](samples/marketing_brief_area_rug.html) · [full report](samples/trend_report_area_rug.html) · [how the code checks the model](docs/design-decisions.md) · [what went wrong and how I fixed it](docs/failures.md)
+
+```text
 You type:   area rug brief for marketing
 You get:    a marketing brief (HTML) with trend segments, evidence levels,
-            creative ideas to test, and AI-generated illustrations
+            creative ideas to test, AI-generated illustrations and the data's limits
 ```
 
-Built by Ajay Dhankar. The data is a stored snapshot of products, social posts and articles, not a live feed.
+Download the sample files and open them in a browser. GitHub shows HTML files as text.
 
-## Why it exists
+## For hiring managers
 
-A trend report written for everyone gets read by few. A supplier needs specifications and counts. Marketing needs ideas to test. Leadership needs a decision and an honest view of the evidence. The agent builds one set of facts and writes a different page for each audience.
+What the project shows, and where to look:
+
+| Skill | Evidence in the repository |
+|---|---|
+| Designing a multi-step LLM workflow | 13 agent nodes, 25 code nodes and routing by request type in `workflow.json`, with one file per stage in `stages/` |
+| Checking model output | Number checks, claim filters and article-quote checks, described in [design decisions](docs/design-decisions.md) |
+| Testing without spending model calls | 318 checks on mock data plus a 12-case guardrail eval, run on every push |
+| Learning from failures | [Nine case studies](docs/failures.md), including a filter miss found in a real run |
+| Judging my own work | [Reflection](docs/reflection.md), [risks](docs/risks.md) and what the project [does not show](docs/reflection.md) |
+
+## For teams considering a pilot
+
+- **The problem:** trend research across listings, social posts and articles is slow, hard to repeat and hard to check. One report rarely serves every reader: a supplier needs counts and specifications, marketing needs ideas to test, and leadership needs a decision and a clear view of how strong the evidence is.
+- **What I would need from you:** your data sources and their terms of use, three users (a buyer, a marketer, an analyst), and a baseline of how you do this today.
+- **How I would test it:** the [validation plan](docs/validation-plan.md) sets success and stop criteria before any run.
+- **What it cannot tell you:** whether a trend will sell. The data has no sales information. See [limits](#limits).
+
+## What it helps solve
+
+The agent does five things in one run:
+- It collects products, social posts and articles together.
+- It counts how often each style, material, colour and pattern appears, so the evidence is visible.
+- It rates each trend as `stronger`, `moderate`, `weak` or `unverified`, and caps its confidence.
+- It writes a separate brief for sourcing, marketing and leadership from the same facts.
+- It states what it cannot tell: there is no sales data, and the sample is small and dated.
+
+The design principle: **code calculates and validates the evidence, and the model writes the wording.**
+
+## What the outcome could look like
+
+This has not been tested with real users or against real sales. The example below comes from the sample run, and the table lists what a pilot would measure.
+
+**Worked example** (the marketing brief in `samples/`, built from 8 products, 13 social posts and 3 articles):
+- Three trend segments came out. One, "Modern Textured Low-Pile", has moderate evidence, and the brief suggests a small pilot or test.
+- Two others, "Vintage Medallion Low-Pile" and "Bohemian Geometric Low-Pile", have weak evidence, and the brief says to monitor them and collect more evidence before investing.
+- Each segment comes with a hypothesis, content ideas and a test to run, all phrased as things to try.
+- The page states that the posts are old and few, and that nothing in it measures demand.
+
+**What a pilot would measure** (hypotheses; there are no results yet):
+
+| Possible outcome | How to test it |
+|---|---|
+| A first trend brief within minutes | Time the agent against an analyst's manual process on the same category |
+| Briefs a buyer or marketer would act on | Have 3-5 users score them with the rubric in `eval/` |
+| Decisions confirmed or changed by the brief | Log each decision next to the brief that informed it |
+| Fewer unsupported claims reaching a page | Count dropped strings and incidents; run the guardrail eval |
+
+I make no claim about revenue, demand or forecast accuracy.
 
 ## What you can ask it
 
@@ -26,20 +78,24 @@ A trend report written for everyone gets read by few. A supplier needs specifica
 | `leadership brief for area rug` | Leadership decision brief only |
 | `area rug briefs` | All three briefs |
 
-Supported categories: area rug, outdoor rug, hallway runner, shag rug. An optional `focus: washable` narrows the search.
+Supported categories: area rug, outdoor rug, hallway runner, shag rug. An optional `focus: washable` narrows the search. Every result is a standalone HTML file with its own `validation` block (`isValid`, warnings, image count).
 
-Every result is a standalone HTML file with its own `validation` block (`isValid`, warnings, image count).
+## The data, and its limits
 
-## Sample output
+The Instagram, Pinterest and blog signals come from a curated dataset supplied by the program to stand in for a third-party trend data provider. Scraping those platforms directly breaks their terms and gets blocked quickly. The data is therefore a **stored snapshot, not a live feed**, and some of it looks curated.
 
-- [`samples/marketing_brief_area_rug.html`](samples/marketing_brief_area_rug.html): marketing brief with embedded illustrations
-- [`samples/trend_report_area_rug.html`](samples/trend_report_area_rug.html): full trend report
+| What | Detail |
+|---|---|
+| Social posts | 13 posts (8 Instagram, 5 Pinterest), dated 12 to 28 November 2024 |
+| Product listings | Up to 10 Amazon listings per run, 6 to 9 kept after filtering, scraped on 23 May 2026 |
+| Articles | 3 blog articles |
+| Collection date of the snapshot | Not confirmed. The program is checking how the data was collected and how often it is refreshed |
 
-Download and open them in a browser. GitHub shows HTML files as text.
+Because of this, every brief states the age and size of the data, caps its confidence at medium, and makes no claim about demand. The questions I raised about the data are in [docs/open-questions.md](docs/open-questions.md).
 
-## The eight stages
+## How it works
 
-`workflow.json` is the complete workflow (78 nodes). `stages/` holds each stage as its own workflow, with a local test suite where one exists.
+`workflow.json` is the complete workflow (75 working nodes, plus sticky notes that explain each stage). `stages/` holds each stage as its own workflow, with a test suite where one exists.
 
 | Stage | What it does | File in `stages/` | Checks |
 |---|---|---|---|
@@ -49,7 +105,7 @@ Download and open them in a browser. GitHub shows HTML files as text.
 | 3. Classify and find trends | Judges which products belong to the category, standardises attributes, builds trend segments with counted evidence | `stage3_classify_and_trends` | 63 |
 | 4. Illustrations | Writes an image prompt per segment, generates the image, encodes it | `stage4_illustrations` | none (tested through the full workflow) |
 | 5. Report sections | Extracts article knowledge, writes seven report sections with one model call each, checks every section | `stage5_report_sections` | 69 |
-| 6. Routing | The `Brief requested?` check sends brief requests to Stage 8 and all others to Stage 7 | in `workflow.json` | none (tested through the full workflow) |
+| 6. Routing | Sends brief requests to Stage 8 and all other requests to Stage 7 | in `workflow.json` | none (tested through the full workflow) |
 | 7. Final report | Assembles and validates the HTML report | `stage7_final_report` | 21 |
 | 8. Audience briefs | Builds the supplier, marketing and leadership briefs | `stage8_audience_briefs` | 27 |
 
@@ -65,64 +121,83 @@ flowchart LR
   G -- yes --> I[8. Audience briefs]
 ```
 
-The workflow has 13 AI agents, 25 JavaScript code nodes, 5 data fetches, one image-generation call and wait nodes that keep free-tier models inside their rate limits. The stage files in `stages/` are earlier standalone versions. The Stage 8 file does not include the chat routing or the later wording fixes, which are in `workflow.json`.
+The workflow has 13 agent nodes, 25 JavaScript code nodes, 5 data fetches, one image-generation call and wait nodes that keep free-tier models inside their rate limits. A full run makes about 14 model calls (an estimate, not a measurement). The stage files in `stages/` are earlier standalone versions. The Stage 8 file does not include the chat routing or the later wording fixes, which are in `workflow.json`.
 
-## The code decides, the model writes
+## How the code checks the model
 
-- **Facts come from code.** Counts, prices, shares and "how many of 13 posts mention this" are calculated, never written by a model.
+- **Facts come from code.** Counts, prices, shares and "how many of 13 posts mention this" are calculated by code.
 - **The model returns structured JSON only.** Raw model text never goes straight into a page.
 - **Every model string is checked.** Anything containing a number that is not in the data, or a claim like "proven", "popular" or "customers prefer", is dropped.
 - **Article claims must quote the article.** A claim is kept only if its supporting quote appears in the stored article text.
-- **Evidence is counted.** Each trend segment is rated `stronger`, `moderate`, `weak` or `unverified` from the share of posts that mention its attributes. Confidence stops at medium.
-- **Failures are visible.** If a model call fails, the result says so (`ai_unavailable`, `ai_output_invalid`) and validation fails. The page never fills the gap with made-up content.
-- **Every page states its limits:** sample size, data age and missing sales data.
+- **Evidence is counted.** Each trend segment is rated from the share of posts that mention its attributes, and confidence stops at medium. The [worked example](docs/design-decisions.md#how-the-evidence-level-works-with-an-example) shows how.
+- **Failures are visible.** If a model call fails, the result says so (`ai_unavailable`, `ai_output_invalid`) and validation fails.
+
+These checks are patterns and counts. They caught a real miss ("shoppers may prefer") only after I saw it in a run, so they reduce the risk of unsupported claims and do not remove it.
+
+## Tools and skills
+
+| Tool or technique | Used for | Where to see it |
+|---|---|---|
+| n8n | Orchestrating 75 working nodes: routing, retries, waits, branching | `workflow.json` |
+| LLM agents (Groq and OpenRouter models) | Classifying products, naming trend segments, writing report sections and creative ideas | the 13 agent nodes in `workflow.json` |
+| Image generation (FLUX.1 schnell on Cloudflare Workers AI) | One illustration per trend segment | `stages/stage4_illustrations.json` |
+| Prompt design | JSON-only replies, scraped text labelled as untrusted data, rules against invented numbers | prompts in `stages/stage5_report_sections.json` and `stages/stage8_audience_briefs.json` |
+| JavaScript | 25 code nodes for parsing, counting, validation and building the HTML pages | `stages/*.json`, `stages/*.test.js` |
+| Validation and guardrails | Number checks, claim filters, article-quote checks, visible failure statuses | the `Parse Blog Knowledge` and `Check Creative Brief` nodes |
+| Testing and evals | 318 stage checks on mock data and a 12-case guardrail eval | `stages/`, `eval/` |
+| REST APIs | Fetching product, social and article data over HTTP, with bearer-token auth for image generation | the HTTP request nodes |
+| GitHub Actions | Running the tests on every push | `.github/workflows/tests.yml` |
 
 ## Tests
 
 Each stage was built and tested on its own with mock data before it joined the next. The tests need no AI, no network and no n8n.
 
-**318 checks across 7 suites, all passing,** plus a 12-case guardrail eval. GitHub runs them on every push. Run any suite from the `stages/` folder:
+**318 checks across 7 suites, all passing,** plus a 12-case guardrail eval (some cases come from real runs, and some I wrote). GitHub runs them on every push. Run any suite from the `stages/` folder:
 
 ```bash
 cd stages && node stage8_audience_briefs.test.js
 ```
 
-The Stage 8 suite feeds the model-output checker good, malformed, hostile and missing answers to confirm none reaches a page unfiltered. The guardrail eval in `eval/` replays 12 recorded model replies through the same checker, including one that slipped through in a real run. `eval/` also holds a scoring rubric for the quality of the briefs, which has not been run yet.
+The Stage 8 suite feeds the model-output checker good, malformed, hostile and missing answers to confirm none reaches a page unfiltered. `eval/` also holds a scoring rubric for the quality of the briefs, which has not been run yet.
 
-## Problems I hit and how I solved them
+## Thinking and reflection
 
-- **AI failures that still passed validation.** When a model call hit a token limit, the marketing page could still pass. The validator now reads the AI status and fails the marketing item when no ideas were generated.
-- **A model router that answered with the wrong kind of model.** One run was answered by a safety classifier ("User Safety: safe"), which gave unusable output. Naming a specific instruct model fixed it.
-- **Silent failures after renaming nodes.** Code nodes look up other nodes by exact name. Pasting into an existing workflow added a `1` to every name, so lookups returned empty data with no error. Importing into an empty workflow fixed it.
-- **"Existing execution data is too large."** n8n refuses to run a single node when base64 images are repeated across nodes. I tested later stages from small pinned data and kept images out of the pins.
-- **Wrong comparisons from the model.** It filed "low-pile" (7 of 7 products and 1 of 13 posts) under "only among Amazon values". The code now writes the comparison sentences and the model copies them.
-- **Empty answers from reasoning models on small token limits.** A non-reasoning model fixed it.
-- **Cut-off and garbled text.** Claims clipped at 40 characters and raw article snippets with broken spacing were fixed by raising the limit and showing only the figure and its source.
-- **A gap in the claims filter.** "Shoppers may prefer" slipped past a pattern that only caught "shoppers prefer". I found it in a real run and tightened the prompt and the pattern.
+I could not test this agent with a client or against real sales, so the repository records the reasoning as well as the build.
+
+| Document | What it holds |
+|---|---|
+| [docs/design-decisions.md](docs/design-decisions.md) | 13 decisions, each with the alternative I rejected and what it costs |
+| [docs/failures.md](docs/failures.md) | Nine things that went wrong, with evidence and the fix, plus one guardrail that worked |
+| [docs/reflection.md](docs/reflection.md) | What I would change, what went differently from what I expected, what I do not know yet |
+| [docs/validation-plan.md](docs/validation-plan.md) | How I would test it with a real team, with success and stop criteria written in advance |
+| [docs/risks.md](docs/risks.md) | Eight risks I identified, and how far the repository addresses each |
+| [docs/open-questions.md](docs/open-questions.md) | What I did not know about the data, and which questions the workflow handles |
 
 ## Run it yourself
 
 1. In n8n, create a new **empty** workflow, then use **Import from file** and choose `workflow.json`.
 2. Create credentials for Groq, OpenRouter and the image-generation API (bearer token). The repository stores no keys, so n8n asks you to pick credentials on each model node.
 3. Replace two placeholders: `YOUR-DATA-API-HOST` in the five fetch nodes (your product and trend data source) and `YOUR_CLOUDFLARE_ACCOUNT_ID` in the image node.
-4. On the model nodes, choose a specific model. Avoid `openrouter/free`, which can route to a model that breaks the JSON output.
-5. Open the chat and send a request from the table above. A full run makes about 14 model calls.
+4. On the model nodes, choose a specific model. The two OpenRouter nodes carry the placeholder `CHOOSE-A-NAMED-INSTRUCT-MODEL`, which you must replace. A router such as `openrouter/free` can send the request to a model that breaks the JSON output.
+5. Open the chat and send a request from the table above.
 
 ## Limits
 
-- The data is a small, dated snapshot: 13 social posts and a handful of products. Evidence levels are low to moderate.
+- The data is a small, dated snapshot (see [The data, and its limits](#the-data-and-its-limits)). Evidence levels are low to moderate.
 - No sales, traffic or search data was available, so nothing here measures demand. Every brief says so.
 - Stages 4 and 6 have no standalone tests, and the stage tests predate the chat routing and the last wording fixes.
-- Next steps: connect sales and search-volume data, add a live social source, label market figures more clearly, and add an automatic check that every number on a page appears in the data.
+- No fallback model, no person-review step before a brief goes out, and no measured cost or run time.
+- Next steps: connect sales and search-volume data, add a live social source, add a fallback model, and add an automatic check that every number on a page appears in the data.
 
 ## Repository layout
 
-```
+```text
 workflow.json        The complete workflow (import into n8n)
 stages/              Each stage as its own workflow, plus its test suite
+docs/                Design decisions, failures, reflection, validation plan, risks, open questions
 eval/                Guardrail eval and a quality rubric
 samples/             Example outputs
 .github/workflows/   Runs the tests on every push
 ```
 
-Licensed under MIT (see `LICENSE`).
+Built by [Ajay Dhankar](https://github.com/Ajay-D92). Licensed under MIT (see `LICENSE`).
