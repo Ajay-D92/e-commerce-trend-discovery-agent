@@ -219,7 +219,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 8192,
           "temperature": 0,
@@ -238,7 +238,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 8192,
           "temperature": 0,
@@ -257,7 +257,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 8192,
           "temperature": 0.3,
