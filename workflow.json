@@ -614,7 +614,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 4096,
           "temperature": 0.5
@@ -1323,7 +1323,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 4500,
           "temperature": 0.3
@@ -1371,6 +1371,86 @@
       ],
       "id": "0a9b2e6b-7a94-48e6-a909-522904079f97",
       "name": "Brief requested?"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1: input and routing\nReads the chat message: the category, an optional `focus:` word, and whether a brief was asked for (`brief`: marketing, supplier, leadership or all).\nCategory words inside the focus value are never used for routing.\nUnclear or unsupported requests go to Error Response1 with a reason, not to a guess.\n**Decision:** reject unclear input instead of picking a category.",
+        "height": 360,
+        "width": 1300,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        -720
+      ],
+      "id": "3a41d711-0293-4621-bcd8-e09f8883f2ad",
+      "name": "Stage 1 notes"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2: data\nFetches Amazon products, Instagram and Pinterest posts, and blog and market articles.\nCaptions and hashtags are cleaned, generic and search tags are removed, and the age of the newest post is reported.\n**Limit:** the data is a stored snapshot. The counts describe 13 posts, not a market.",
+        "height": 420,
+        "width": 2100,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        -880
+      ],
+      "id": "a811d306-6c2c-40ee-ad45-ea80c64e2982",
+      "name": "Stage 2 notes"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3: classify and find trends\nA model judges which products belong to the category, then standardises attributes from a fixed vocabulary.\nEach trend segment gets a counted evidence level (stronger, moderate, weak, unverified) from the share of posts that mention its attributes. Confidence stops at medium.\n**Decision:** a count can be checked and a model's self-rating cannot. The cut-offs (0.2 and 0.5) are my judgment and are not validated.",
+        "height": 380,
+        "width": 2000,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3700,
+        -1056
+      ],
+      "id": "babdc027-1557-4982-b06e-5cb1e36bb3d8",
+      "name": "Stage 3 notes"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 4: illustrations\nOne image prompt per segment, then one generated image, encoded for the pages.\nImages are labelled as AI-generated and are never used as evidence.\n**Note:** carrying images through every node made single-node testing fail with 'execution data is too large'.",
+        "height": 380,
+        "width": 1700,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5800,
+        -1056
+      ],
+      "id": "55b15999-9042-4e0a-ab8f-2d34546788ed",
+      "name": "Stage 4 notes"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 6: routing\nA request that asks for a brief goes to Stage 8. Any other request goes to Stage 7, the full report.\nStage 8 reads the same report data, so the briefs and the report stay consistent.",
+        "height": 260,
+        "width": 760,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        12700,
+        320
+      ],
+      "id": "d4e7c979-3f40-431b-999d-70e16197c2a0",
+      "name": "Stage 6 notes"
     }
   ],
   "pinData": {},
