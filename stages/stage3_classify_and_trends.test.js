@@ -43,9 +43,9 @@ check('main chain is wired in the course order; Check Segment Exists outputs are
 check('each OpenRouter model feeds exactly its own agent through ai_languageModel', () => {
   for (const [m, agent] of Object.entries(MODELS)) assert.deepStrictEqual(wf.connections[m].ai_languageModel, [[{ node: agent, type: 'ai_languageModel', index: 0 }]], m);
 });
-check('OpenRouter models: free router, 120 s timeout, 1 retry, and a generous 8192-token limit (reasoning models can spend the budget thinking)', () => {
+check('OpenRouter models: a placeholder to replace with a named model (no router default), 120 s timeout, 1 retry, and a generous 8192-token limit (reasoning models can spend the budget thinking)', () => {
   const opts = (m) => node(m).parameters;
-  for (const m of Object.keys(MODELS)) { assert.strictEqual(opts(m).model, 'openrouter/free'); assert.strictEqual(opts(m).options.timeout, 120000); assert.strictEqual(opts(m).options.maxRetries, 1); assert.strictEqual(opts(m).options.maxTokens, 8192); }
+  for (const m of Object.keys(MODELS)) { assert.strictEqual(opts(m).model, 'CHOOSE-A-NAMED-INSTRUCT-MODEL'); assert.strictEqual(opts(m).options.timeout, 120000); assert.strictEqual(opts(m).options.maxRetries, 1); assert.strictEqual(opts(m).options.maxTokens, 8192); }
   assert.strictEqual(opts('OpenRouter - Judge').options.temperature, 0); assert.strictEqual(opts('OpenRouter - Standardize').options.temperature, 0); assert.strictEqual(opts('OpenRouter - Trends').options.temperature, 0.3);
 });
 check('Merge All Data1: combine by position (one item), keeps unpaired items', () => {
