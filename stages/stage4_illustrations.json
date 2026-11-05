@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "model": "openrouter/free",
+        "model": "CHOOSE-A-NAMED-INSTRUCT-MODEL",
         "options": {
           "maxTokens": 4096,
           "temperature": 0.5
